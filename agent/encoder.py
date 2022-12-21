@@ -12,6 +12,8 @@ class PixelEncoder(nn.Module):
                        mlp_hidden_dims=(),
                        hidden_act=nn.ReLU,
                        out_act=None):
+        super().__init__()
+
         self.obs_shape = obs_shape
         self.dim_out = dim_out
         self.num_layers = num_layers
@@ -48,17 +50,20 @@ class FeatureEncoder(nn.Module):
                  act_shape: tuple,
                  q_dim: int,
                  a_dim: int,
+                 num_layers: int,
+                 num_filters: int,
                  act_hidden_dims=(50,),
                  fdm_hidden_dims=(50,),
                  ):
+        super().__init__()
 
         self.obs_shape = obs_shape
         self.act_shape = act_shape
         self.q_dim = q_dim
         self.a_dim = a_dim
         
-        self.query_encoder = PixelEncoder(obs_shape=obs_shape, dim_out=q_dim)
-        self.key_encoder = PixelEncoder(obs_shape=obs_shape, dim_out=q_dim)
+        self.query_encoder = PixelEncoder(obs_shape=obs_shape, dim_out=q_dim, num_filters=num_filters, num_layers=num_layers)
+        self.key_encoder = PixelEncoder(obs_shape=obs_shape, dim_out=q_dim, num_filters=num_filters, num_layers=num_layers)
         copy_params(copy_from=self.query_encoder, copy_to=self.key_encoder)
         for param in self.key_encoder.parameters(): 
             param.requires_grad = False # disable gradient computation for target network
