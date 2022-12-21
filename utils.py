@@ -190,9 +190,6 @@ class FrameStackDMC(pixels.Wrapper):
         observation[self._observation_key] = self.get_state()
         return time_step._replace(observation=observation)
 
-
-
-
 def make_MLP(in_dim: int, 
              out_dim: int, 
              hidden_dims: tuple, 
