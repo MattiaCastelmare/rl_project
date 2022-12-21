@@ -46,10 +46,8 @@ def module_hash(module):
 
 
 def make_dir(dir_path):
-    try:
-        os.mkdir(dir_path)
-    except OSError:
-        pass
+    os.makedirs(dir_path)
+    
     return dir_path
 
 
@@ -138,6 +136,35 @@ class ReplayBuffer(object):
             self.rewards[start:end] = payload[3]
             self.dones[start:end] = payload[4]
             self.idx = end
+
+class FrameStack(gym.Wrapper):
+    def __init__(self, env, k):
+        gym.Wrapper.__init__(self, env)
+        self._k = k
+        self._frames = deque([], maxlen=k)
+        shp = env.observation_space.shape
+        self.observation_space = gym.spaces.Box(
+            low=0,
+            high=1,
+            shape=((shp[0] * k,) + shp[1:]),
+            dtype=env.observation_space.dtype
+        )
+        self._max_episode_steps = env._max_episode_steps
+
+    def reset(self):
+        obs = self.env.reset()
+        for _ in range(self._k):
+            self._frames.append(obs)
+        return self._get_obs()
+
+    def step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        self._frames.append(obs)
+        return self._get_obs(), reward, done, info
+
+    def _get_obs(self):
+        assert len(self._frames) == self._k
+        return np.concatenate(list(self._frames), axis=0)
 
 from dm_control.suite.wrappers import pixels
 from dm_env import specs
@@ -276,7 +303,7 @@ def random_crop(imgs_torch: torch.Tensor, output_size):
 
 def center_crop_image(image, output_size):
     h, w = image.shape[1:]
-    new_h, new_w = output_size[1:]
+    new_h, new_w = output_size, output_size
 
     top = (h - new_h)//2
     left = (w - new_w)//2

@@ -20,25 +20,25 @@ class PixelEncoder(nn.Module):
         
         layers = []
         layers.append(nn.Conv2d(obs_shape[0], num_filters, ksize, stride=2))
-        layers.append(hidden_act)
+        layers.append(hidden_act())
         
         for _ in range(num_layers - 1):
             layers.append(nn.Conv2d(num_filters, num_filters, ksize, stride=1))
-            layers.append(nn.ReLU)
-        self.cnn = nn.Sequential(layers)
+            layers.append(nn.ReLU())
+        self.cnn = nn.Sequential(*layers)
 
         # get flattened size through a forward
         with torch.no_grad():
-            _test = torch.zeros(self.dim_in).to(self.device)
+            _test = torch.zeros(self.obs_shape).to(list(self.cnn.parameters())[0].device)
             out = self.cnn(_test)
             self.v_shape = out.flatten().shape[0]
-
-        self.mlp = make_MLP(self.v_shape, self.dim_out, mlp_hidden_dims, out_act).to(self.device)
+        self.mlp = make_MLP(self.v_shape, self.dim_out, mlp_hidden_dims, out_act)
         self.ln = nn.LayerNorm(self.dim_out) # helps with contrastive loss
 
     def forward(self, obs: torch.FloatTensor):
         cnn = self.cnn(obs)
-        mlp = self.mlp(cnn)
+        
+        mlp = self.mlp(torch.flatten(cnn,start_dim=1))
 
         q = self.ln(mlp)
 
@@ -68,7 +68,7 @@ class FeatureEncoder(nn.Module):
         for param in self.key_encoder.parameters(): 
             param.requires_grad = False # disable gradient computation for target network
 
-        self.action_embedding = make_MLP(self.act_shape,self.a_dim,act_hidden_dims)
+        self.action_embedding = make_MLP(self.act_shape[0],self.a_dim,act_hidden_dims)
         self.forward_dynamics = make_MLP(self.q_dim+self.a_dim,self.q_dim,fdm_hidden_dims)
 
         self.W = nn.Parameter(torch.rand((q_dim,q_dim))) # for bilinear product

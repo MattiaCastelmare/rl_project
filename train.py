@@ -47,13 +47,12 @@ def parse_args():
     parser.add_argument('--actor_log_std_max', default=2, type=float)
     parser.add_argument('--actor_update_freq', default=2, type=int)
     # encoder
-    parser.add_argument('--encoder_type', default='pixel', type=str)
     parser.add_argument('--encoder_feature_dim', default=50, type=int)
+    parser.add_argument('--encoder_action_dim', default=50, type=int)
     parser.add_argument('--encoder_lr', default=1e-3, type=float)
     parser.add_argument('--encoder_tau', default=0.05, type=float)
     parser.add_argument('--num_layers', default=4, type=int)
     parser.add_argument('--num_filters', default=32, type=int)
-    parser.add_argument('--curl_latent_dim', default=128, type=int)
     parser.add_argument('--idm_lr', default=1e-3, type=float)
     parser.add_argument('--fdm_lr', default=1e-3, type=float)
     parser.add_argument('--cpc_update_freq', default=2, type=float)
@@ -67,7 +66,7 @@ def parse_args():
     # misc
     parser.add_argument('--seed', default=1, type=int)
     parser.add_argument('--exp', default='exp', type=str)
-    parser.add_argument('--work_dir', default='.', type=str)
+    parser.add_argument('--work_dir', default='./tmp', type=str)
     parser.add_argument('--save_tb', default=False, action='store_true')
     parser.add_argument('--save_buffer', default=False, action='store_true')
     parser.add_argument('--save_video', default=False, action='store_true')
@@ -91,9 +90,7 @@ def evaluate(env, agent, video, num_episodes, L, step, env_step, args):
             done = False
             episode_reward = 0
             while not done:
-                # center crop image
-                if args.encoder_type == 'pixel':
-                    obs = utils.center_crop_image(obs,args.image_size)
+                obs = utils.center_crop_image(obs,args.image_size)
                 with utils.eval_mode(agent):
                     if sample_stochastically:
                         action = agent.sample_action(obs)
@@ -136,8 +133,8 @@ def make_agent(obs_shape, action_shape, args, device):
             critic_beta=args.critic_beta,
             critic_tau=args.critic_tau,
             critic_target_update_freq=args.critic_target_update_freq,
-            encoder_type=args.encoder_type,
             encoder_feature_dim=args.encoder_feature_dim,
+            encoder_action_dim=args.encoder_action_dim,
             encoder_lr=args.encoder_lr,
             idm_lr=args.idm_lr,
             fdm_lr=args.fdm_lr,
@@ -149,7 +146,6 @@ def make_agent(obs_shape, action_shape, args, device):
             fdm_update_freq=args.fdm_update_freq,
             log_interval=args.log_interval,
             detach_encoder=args.detach_encoder,
-            curl_latent_dim=args.curl_latent_dim
         )
 
 def make_logdir(args):
@@ -157,16 +153,9 @@ def make_logdir(args):
     ts = time.localtime()
     ts = time.strftime("%m-%d-%H-%M-%S", ts)
     env_name = args.domain_name + '-' + args.task_name
-    if args.encoder_type == 'pixel':
-        exp_name = env_name + '/' + args.exp + '/' + 'img' + str(args.image_size) + \
-                   '-b' + str(args.batch_size) + '-s' + str(args.seed) + \
-                   '-' + args.encoder_type + '-' + ts
-    elif args.encoder_type == 'identity':
-        exp_name = env_name + '/' + args.exp + '/' + 'state' + \
-                   '-b' + str(args.batch_size) + '-s' + str(args.seed) + \
-                   '-' + args.encoder_type + '-' + ts
-    else:
-        raise NotImplementedError('Not support: {}'.format(args.encoder_type))
+
+    exp_name = env_name + '/' + args.exp + '/' + 'img' + str(args.image_size) + \
+                '-b' + str(args.batch_size) + '-s' + str(args.seed) + '-' + ts
 
     args.work_dir = args.work_dir + '/' + exp_name
 
@@ -183,7 +172,7 @@ def main():
         task_name=args.task_name,
         seed=args.seed,
         visualize_reward=False,
-        from_pixels=(args.encoder_type == 'pixel'),
+        from_pixels=True,
         height=args.pre_transform_image_size,
         width=args.pre_transform_image_size,
         frame_skip=args.action_repeat
@@ -192,8 +181,7 @@ def main():
     env.seed(args.seed)
 
     # stack several consecutive frames together
-    if args.encoder_type == 'pixel':
-        env = utils.FrameStack(env, k=args.frame_stack)
+    env = utils.FrameStack(env, k=args.frame_stack)
     
     # make directory
     make_logdir(args)
@@ -210,12 +198,8 @@ def main():
 
     action_shape = env.action_space.shape
 
-    if args.encoder_type == 'pixel':
-        obs_shape = (3*args.frame_stack, args.image_size, args.image_size)
-        pre_aug_obs_shape = (3*args.frame_stack,args.pre_transform_image_size,args.pre_transform_image_size)
-    else:
-        obs_shape = env.observation_space.shape
-        pre_aug_obs_shape = obs_shape
+    obs_shape = (3*args.frame_stack, args.image_size, args.image_size)
+    pre_aug_obs_shape = (3*args.frame_stack,args.pre_transform_image_size,args.pre_transform_image_size)
 
     replay_buffer = utils.ReplayBuffer(
         obs_shape=pre_aug_obs_shape,
@@ -223,7 +207,6 @@ def main():
         capacity=args.replay_buffer_capacity,
         batch_size=args.batch_size,
         device=device,
-        image_size=args.image_size,
     )
 
     agent = make_agent(
@@ -241,8 +224,7 @@ def main():
     env_step = 0
     for step in tqdm(range(args.num_train_steps)):
         # evaluate agent periodically
-
-        if step % args.eval_freq == 0:
+        if step > 0 and step % args.eval_freq == 0:
             L.log('eval/episode', episode, env_step)
             evaluate(env, agent, video, args.num_eval_episodes, L, step, env_step, args)
             if args.save_model:

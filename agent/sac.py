@@ -3,7 +3,7 @@ import torch
 from utils import make_MLP, copy_params
 import numpy as np
 
-def gaussian_logprob(self,noise, log_std):
+def gaussian_logprob(noise, log_std):
     """Compute Gaussian log probability."""
     residual = (-0.5 * noise.pow(2) - log_std).sum(-1, keepdim=True)
     return residual - 0.5 * np.log(2 * np.pi) * noise.size(-1)
@@ -32,7 +32,7 @@ class Actor(nn.Module):
         self.log_std_max = log_std_max
 
     
-    def forward(self, s, compute_pi=True, compute_log_pi=True, detach_encoder=False):
+    def forward(self, s):
         # split output in two
         mu, log_std = self.policy_network(s).chunk(2, dim=-1)
 
@@ -60,11 +60,11 @@ class Critic(nn.Module):
         ):
         super().__init__()
 
-        self.Q1 = make_MLP(s_dim+a_dim, (hidden_dim,hidden_dim))
-        self.Q2 = make_MLP(s_dim+a_dim, (hidden_dim,hidden_dim))
+        self.Q1 = make_MLP(s_dim+a_dim,1, (hidden_dim,hidden_dim,))
+        self.Q2 = make_MLP(s_dim+a_dim,1, (hidden_dim,hidden_dim,))
 
-        self.Q1_target = make_MLP(s_dim+a_dim, (hidden_dim,hidden_dim))
-        self.Q2_target = make_MLP(s_dim+a_dim, (hidden_dim,hidden_dim))
+        self.Q1_target = make_MLP(s_dim+a_dim,1, (hidden_dim,hidden_dim))
+        self.Q2_target = make_MLP(s_dim+a_dim,1, (hidden_dim,hidden_dim))
         copy_params(copy_from=self.Q1, copy_to=self.Q1_target)
         for param in self.Q1_target.parameters(): 
             param.requires_grad = False # disable gradient computation for target network
